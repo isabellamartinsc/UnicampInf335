@@ -1,57 +1,36 @@
 pipeline {
   agent any
+  options { timestamps() }
 
-  tools {
-    maven 'Maven-3.9'
-    jdk   'JDK-17'
-  }
-
-  options {
-    timestamps()
-    ansiColor('xterm')
-    buildDiscarder(logRotator(numToKeepStr: '20'))
+  environment {
+    HOMEBREW_PREFIX = '/opt/homebrew'
+    HOMEBREW_BIN    = '/opt/homebrew/bin'
+    JAVA_HOME       = sh(returnStdout: true, script: "/usr/libexec/java_home -v 17").trim()
   }
 
   stages {
     stage('Checkout') {
       steps {
         checkout scm
-        sh 'git --version'
-        sh 'mvn -v'
       }
     }
 
-    stage('Compilar') {
+    stage('Build/Test/Package') {
       steps {
-        sh 'mvn -B -DskipTests=false clean compile'
-      }
-    }
-
-    stage('Testar (JUnit)') {
-      steps {
-        sh 'mvn -B test'
-      }
-      post {
-        always {
-          junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
-        }
-      }
-    }
-
-    stage('Empacotar (.jar)') {
-      steps {
-        sh 'mvn -B -DskipTests=false package'
-      }
-      post {
-        success {
+        withEnv([
+          "PATH=${env.HOMEBREW_BIN}:${env.JAVA_HOME}/bin:${env.PATH}",
+          "JAVA_HOME=${env.JAVA_HOME}"
+        ]) {
+          sh 'echo "JAVA_HOME=$JAVA_HOME"'
+          sh 'java -version || true'
+          sh 'mvn -v'
+          sh 'mvn -B -DskipTests=false clean compile'
+          sh 'mvn -B test'
+          junit 'target/surefire-reports/*.xml'
+          sh 'mvn -B package'
           archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
         }
       }
     }
-  }
-
-  post {
-    success { echo 'Build OK: compilação, testes e empacotamento concluídos.' }
-    failure { echo 'Build falhou. Verifique o console e relatórios JUnit.' }
   }
 }
