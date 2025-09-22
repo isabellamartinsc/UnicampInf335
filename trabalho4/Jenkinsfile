@@ -1,0 +1,57 @@
+pipeline {
+  agent any
+
+  tools {
+    maven 'Maven-3.9'
+    jdk   'JDK-17'
+  }
+
+  options {
+    timestamps()
+    ansiColor('xterm')
+    buildDiscarder(logRotator(numToKeepStr: '20'))
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        checkout scm
+        sh 'git --version'
+        sh 'mvn -v'
+      }
+    }
+
+    stage('Compilar') {
+      steps {
+        sh 'mvn -B -DskipTests=false clean compile'
+      }
+    }
+
+    stage('Testar (JUnit)') {
+      steps {
+        sh 'mvn -B test'
+      }
+      post {
+        always {
+          junit allowEmptyResults: true, testResults: 'target/surefire-reports/*.xml'
+        }
+      }
+    }
+
+    stage('Empacotar (.jar)') {
+      steps {
+        sh 'mvn -B -DskipTests=false package'
+      }
+      post {
+        success {
+          archiveArtifacts artifacts: 'target/*.jar', fingerprint: true
+        }
+      }
+    }
+  }
+
+  post {
+    success { echo 'Build OK: compilação, testes e empacotamento concluídos.' }
+    failure { echo 'Build falhou. Verifique o console e relatórios JUnit.' }
+  }
+}
